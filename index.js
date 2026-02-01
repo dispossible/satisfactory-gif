@@ -85,7 +85,12 @@ const OPTIONS_MODAL_CLOSE_SELECTOR = "#optionsModal .modal-header button.close";
 
 async function getFileList() {
     const filesInFolder = await fs.readdir(SAVES_PATH);
-    return filesInFolder.filter((fileName) => fileName.endsWith(".sav"));
+    return filesInFolder.filter(
+        (fileName) =>
+            fileName.endsWith(".sav") &&
+            !fileName.toLowerCase().includes("_autosave_") &&
+            !fileName.toLowerCase().includes("_continue.sav"),
+    );
 }
 
 async function getOutputFileList() {
