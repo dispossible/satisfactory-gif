@@ -1,0 +1,17 @@
+{
+    "name": "satisfactory-gif",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "type": "module",
+    "author": "Dispossible",
+    "license": "ISC",
+    "dependencies": {
+        "canvas": "^3.2.1",
+        "gif-encoder-2": "^1.0.5",
+        "puppeteer": "^24.36.1"
+    }
+}
