@@ -4,62 +4,55 @@ import fsSync from "fs";
 import GIFEncoder from "gif-encoder-2";
 import { createCanvas, Image } from "canvas";
 import path from "path";
+import setup from "./setup.js";
 
-const MAP_URL = "https://satisfactory-calculator.com/en/interactive-map";
+import { MAP_URL, SAVES_PATH, OUTPUT_PATH, SCREENSHOTS_PATH, TRANSPARENT_PATH, FRAME_PATH } from "./vars.js";
 
-const SAVES_PATH = "./saves";
-const OUTPUT_PATH = "./output";
-const OUTPUT_PATH_1 = `${OUTPUT_PATH}/1`;
-const OUTPUT_PATH_2 = `${OUTPUT_PATH}/2`;
+import {
+    SAVE_INPUT_SELECTOR,
+    MODAL_SELECTOR,
+    COOKIE_DIALOG_SELECTOR,
+    DATA_CONSENT_DIALOG_SELECTOR,
+    MONETIZE_SELECTOR,
+    LOADING_SELECTOR,
+    DOWNLOAD_BUTTON_SELECTOR,
+    ZOOM_OUT_SELECTOR,
+    ZOOM_IN_SELECTOR,
+    SHOW_PURE_NODES_SELECTOR,
+    TOGGLE_PURE_NODES_SELECTOR,
+    MAP_SELECTOR,
+    MAP_BUTTON_SELECTORS,
+    OPTIONS_BUTTON_SELECTOR,
+    OPTIONS_MODAL_SELECTOR,
+    STAT_OPTIONS_SELECTOR,
+    CIRCUIT_TOGGLE_SELECTOR,
+    OPTIONS_MODAL_CLOSE_SELECTOR,
+} from "./selectors.js";
 
 const SCALE = 4096;
 const ZOOM_IN_STEPS = 5;
-
-const SAVE_INPUT_SELECTOR = "#saveGameFileInput";
-const MODAL_SELECTOR = "#patreonModal";
-const COOKIE_DIALOG_SELECTOR = "[aria-label='cookieconsent']";
-const DATA_CONSENT_DIALOG_SELECTOR = ".fc-choice-dialog";
-const MONETIZE_SELECTOR = ".fc-message-root";
-const LOADING_SELECTOR = "#productionContainer .loader";
-const DOWNLOAD_BUTTON_SELECTOR = "#downloadSaveGameModalButton";
-const ZOOM_OUT_SELECTOR = ".leaflet-control-zoom-out";
-const ZOOM_IN_SELECTOR = ".leaflet-control-zoom-in";
-const SHOW_PURE_NODES_SELECTOR = ".selectPurity[data-purity='pure']";
-const TOGGLE_PURE_NODES_SELECTOR = ".togglePurity[data-purity='pure']";
-const MAP_SELECTOR = "#productionContainer";
-const MAP_BUTTON_SELECTORS = [
-    ".btn[data-id='playerPositionLayer']",
-    ".btn[data-id='playerHUBTerminalLayer']",
-    ".btn[data-id='playerOrientationLayer']",
-    ".btn[data-id='playerCratesLayer']",
-    ".btn[data-id='playerSpaceRabbitLayer']",
-    ".btn[data-id='playerFaunaLayer']",
-    ".btn[data-id='playerFicsmasLayer']",
-    ".btn[data-id='playerFogOfWar']",
-    ".btn[data-id='playerVehiculesLayer']",
-    ".btn[data-id='playerRadioactivityLayer']",
-];
-const OPTIONS_BUTTON_SELECTOR = "#optionsButton button";
-const OPTIONS_MODAL_SELECTOR = "#optionsModal.show";
-const STAT_OPTIONS_SELECTOR = "a[href='#statisticsModalOptions']";
-const CIRCUIT_TOGGLE_SELECTOR = "#inputShowCircuitsColors";
-const OPTIONS_MODAL_CLOSE_SELECTOR = "#optionsModal .modal-header button.close";
+const CONCURRENCY = 3;
 
 (async () => {
+    await setup();
+
     const saves = await getFilteredFileList();
 
-    if (saves.length > 0) {
-        const browser = await puppeteer.launch({
-            headless: false,
-            defaultViewport: {
-                width: SCALE,
-                height: SCALE,
-                deviceScaleFactor: 1,
-            },
-        });
+    const processingTasks = saves.map((saveFile) => processAndScreenshot(saveFile));
+    await runWithConcurrency(processingTasks, CONCURRENCY);
 
-        for (const [i, saveFile] of saves.entries()) {
-            console.log(`${i + 1}/${saves.length}`);
+    await createGif(SCREENSHOTS_PATH, "animation.gif");
+})();
+
+/**
+ * @param {string} saveFile
+ */
+function processAndScreenshot(saveFile) {
+    /**
+     * @param {Browser} browser
+     */
+    return async (browser) => {
+        try {
             const page = await openPage(browser);
 
             await loadMap(page, saveFile);
@@ -71,17 +64,54 @@ const OPTIONS_MODAL_CLOSE_SELECTOR = "#optionsModal .modal-header button.close";
             await configureMapView(page);
             await takeScreenshot(page, saveFile);
             await page.close();
+        } catch (err) {
+            console.error(`Failed: ${saveFile}`, err);
+            throw err;
         }
+    };
+}
 
-        await browser.close();
-    }
+/**
+ * Run promises with concurrency limit
+ * @template T
+ * @param {((browser: Browser) => Promise<T>)[]} promises
+ * @param {number} concurrentAmount
+ * @returns {Promise<T[]>}
+ */
+async function runWithConcurrency(promises, concurrentAmount) {
+    const jobQueue = [...promises];
+    /** @type {T[]} */
+    const results = [];
 
-    try {
-        await createGif(OUTPUT_PATH_1, "animation_1.gif");
-    } catch (err) {
-        console.error("Error creating GIF: ", err);
-    }
-})();
+    return new Promise((resolveQueue, rejectQueue) => {
+        const workers = new Array(concurrentAmount).fill("").map(async () => {
+            const browser = await puppeteer.launch({
+                headless: false,
+                defaultViewport: {
+                    width: SCALE,
+                    height: SCALE,
+                    deviceScaleFactor: 1,
+                },
+            });
+
+            while (jobQueue.length > 0) {
+                const job = jobQueue.shift();
+                if (job) {
+                    const result = await job(browser);
+                    results.push(result);
+                }
+            }
+
+            await browser.close();
+        });
+
+        Promise.all(workers)
+            .then(() => resolveQueue(results))
+            .catch((err) => {
+                rejectQueue(err);
+            });
+    });
+}
 
 async function getFileList() {
     const filesInFolder = await fs.readdir(SAVES_PATH);
@@ -94,8 +124,8 @@ async function getFileList() {
 }
 
 async function getOutputFileList() {
-    const filesInFolder1 = (await fs.readdir(OUTPUT_PATH_1)).filter((fileName) => fileName.endsWith(".png"));
-    const filesInFolder2 = (await fs.readdir(OUTPUT_PATH_2)).filter((fileName) => fileName.endsWith(".png"));
+    const filesInFolder1 = (await fs.readdir(SCREENSHOTS_PATH)).filter((fileName) => fileName.endsWith(".png"));
+    const filesInFolder2 = (await fs.readdir(TRANSPARENT_PATH)).filter((fileName) => fileName.endsWith(".png"));
     return filesInFolder1.filter((fileName) => filesInFolder2.includes(fileName));
 }
 
@@ -118,7 +148,10 @@ async function openPage(browser) {
     const modal = await page.$(MODAL_SELECTOR);
     if (modal) {
         await page.$eval(MODAL_SELECTOR, (modal) => {
-            modal.querySelector("button.close").click();
+            const closeBtn = modal.querySelector("button.close");
+            if (closeBtn instanceof HTMLElement) {
+                closeBtn.click();
+            }
         });
         await page.waitForSelector(MODAL_SELECTOR, { visible: false, timeout: 0 });
     }
@@ -126,7 +159,10 @@ async function openPage(browser) {
     const cookies = await page.$(COOKIE_DIALOG_SELECTOR);
     if (cookies) {
         await page.$eval(COOKIE_DIALOG_SELECTOR, (dialog) => {
-            dialog.querySelector("a.cc-dismiss").click();
+            const closeBtn = dialog.querySelector("a.cc-dismiss");
+            if (closeBtn instanceof HTMLElement) {
+                closeBtn.click();
+            }
         });
         await page.waitForSelector(COOKIE_DIALOG_SELECTOR, { visible: false, timeout: 0 });
     }
@@ -134,7 +170,10 @@ async function openPage(browser) {
     const dataConsent = await page.$(DATA_CONSENT_DIALOG_SELECTOR);
     if (dataConsent) {
         await page.$eval(DATA_CONSENT_DIALOG_SELECTOR, (dialog) => {
-            dialog.querySelector("button.fc-cta-consent").click();
+            const closeBtn = dialog.querySelector("button.fc-cta-consent");
+            if (closeBtn instanceof HTMLElement) {
+                closeBtn.click();
+            }
         });
         await page.waitForSelector(DATA_CONSENT_DIALOG_SELECTOR, { hidden: true, timeout: 0 });
     }
@@ -162,6 +201,7 @@ async function loadMap(page, fileName) {
     await page.waitForSelector(SAVE_INPUT_SELECTOR);
     const input = await page.$(SAVE_INPUT_SELECTOR);
 
+    // @ts-ignore
     await input.uploadFile(`${SAVES_PATH}/${fileName}`);
 
     await page.waitForSelector(LOADING_SELECTOR, { visible: false, timeout: 0 });
@@ -169,15 +209,18 @@ async function loadMap(page, fileName) {
 
     await page.evaluate(async (LOADING_SELECTOR) => {
         await new Promise((res) => setTimeout(res, 500));
+        /** @type HTMLElement | null */
         let loader = document.querySelector(LOADING_SELECTOR);
-        await new Promise((resolve) => {
-            const interval = setInterval(() => {
-                if (loader.offsetWidth === 0 && loader.offsetHeight === 0) {
-                    clearInterval(interval);
-                    resolve();
-                }
-            }, 500);
-        });
+        await /** @type {Promise<void>} */ (
+            new Promise((resolve) => {
+                const interval = setInterval(() => {
+                    if (loader?.offsetWidth === 0 && loader?.offsetHeight === 0) {
+                        clearInterval(interval);
+                        resolve();
+                    }
+                }, 500);
+            })
+        );
         await new Promise((res) => setTimeout(res, 500));
     }, LOADING_SELECTOR);
 
@@ -216,7 +259,7 @@ async function setMapGlobalSettings(page) {
     await clickButton(page, STAT_OPTIONS_SELECTOR);
     await page.waitForSelector(CIRCUIT_TOGGLE_SELECTOR);
     const reloadRequired = await page.$eval(CIRCUIT_TOGGLE_SELECTOR, (cBox) => {
-        if (cBox.checked) {
+        if (cBox instanceof HTMLInputElement && cBox.checked) {
             cBox.click();
             return true;
         }
@@ -235,13 +278,15 @@ async function setMapGlobalSettings(page) {
 async function clickButton(page, selector) {
     await retry(async () => {
         await page.waitForSelector(selector);
-        await page.$eval(selector, (btn) => btn.click());
+        await page.$eval(selector, (btn) => {
+            if (btn instanceof HTMLElement) btn.click();
+        });
         await wait(0.5);
     });
 }
 
 /**
- * @param {() => Promise<any>)} func
+ * @param {() => Promise<any>} func
  * @param {number} attempts
  * @param {number} delay
  */
@@ -269,9 +314,11 @@ async function hideMapViewElements(page) {
         const button = await page.$(buttonSelector);
         if (button) {
             await page.$eval(buttonSelector, async (button) => {
-                while (button.classList.contains("btn-outline-warning")) {
-                    button.click();
-                    await new Promise((res) => setTimeout(res, 500));
+                if (button instanceof HTMLElement) {
+                    while (button.classList.contains("btn-outline-warning")) {
+                        button.click();
+                        await new Promise((res) => setTimeout(res, 500));
+                    }
                 }
             });
         }
@@ -285,17 +332,21 @@ async function hideMapViewElements(page) {
 async function setZoomLevel(page) {
     console.log("Setting zoom level");
     await page.$eval(ZOOM_OUT_SELECTOR, async (zoomOut) => {
-        while (zoomOut.getAttribute("aria-disabled") !== "true") {
-            zoomOut.click();
-            await new Promise((res) => setTimeout(res, 1000));
+        if (zoomOut instanceof HTMLElement) {
+            while (zoomOut.getAttribute("aria-disabled") !== "true") {
+                zoomOut.click();
+                await new Promise((res) => setTimeout(res, 1000));
+            }
         }
     });
     await page.$eval(
         ZOOM_IN_SELECTOR,
         async (zoomIn, ZOOM_IN_STEPS) => {
-            for (let i = 0; i < ZOOM_IN_STEPS; i++) {
-                zoomIn.click();
-                await new Promise((res) => setTimeout(res, 1000));
+            if (zoomIn instanceof HTMLElement) {
+                for (let i = 0; i < ZOOM_IN_STEPS; i++) {
+                    zoomIn.click();
+                    await new Promise((res) => setTimeout(res, 1000));
+                }
             }
         },
         ZOOM_IN_STEPS,
@@ -319,10 +370,10 @@ async function takeScreenshot(page, fileName) {
     console.log(`Saving map '${screenshotName}'`);
 
     await page.screenshot({
-        path: `${OUTPUT_PATH_1}/${screenshotName}`,
+        path: `${SCREENSHOTS_PATH}/${screenshotName}`,
         clip: mapBox,
     });
-    await saveTransparent(page, `${OUTPUT_PATH_2}/${screenshotName}`);
+    await saveTransparent(page, `${TRANSPARENT_PATH}/${screenshotName}`);
 }
 
 /**
@@ -348,7 +399,7 @@ async function saveTransparent(page, filePath) {
  * @param {string} filename
  * @returns {Promise<void>}
  */
-async function createGif(imagePath = OUTPUT_PATH_1, filename = "animation.gif") {
+async function createGif(imagePath = SCREENSHOTS_PATH, filename = "animation.gif") {
     const filesInFolder = await fs.readdir(imagePath);
     const images = filesInFolder.filter((fileName) => fileName.endsWith(".png")).sort();
 
@@ -382,12 +433,24 @@ function getMapBounds(image) {
     const ctx = canvas.getContext("2d");
     ctx.drawImage(image, 0, 0);
 
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @returns
+     */
     function getPxAt(x, y) {
         const i = (y * width + x) * 4;
         const [r, g, b] = [imgData.data[i], imgData.data[i + 1], imgData.data[i + 2]];
         return { r, g, b };
     }
 
+    /**
+     * @typedef {{r: number; g: number; b: number;}} PxColor
+     */
+    /**
+     * @param {PxColor} colorA
+     * @param {PxColor} colorB
+     */
     function matchesPxColor(colorA, colorB) {
         return colorA.r === colorB.r && colorA.g === colorB.g && colorA.b === colorB.b;
     }
