@@ -4,12 +4,14 @@
     "description": "",
     "main": "index.js",
     "scripts": {
-        "start": "node index.js"
+        "start": "node src/index.js",
+        "import-saves": "node src/import-saves.js"
     },
     "type": "module",
     "author": "Dispossible",
     "license": "ISC",
     "dependencies": {
+        "@etothepii/satisfactory-file-parser": "^3.3.0",
         "canvas": "^3.2.1",
         "gif-encoder-2": "^1.0.5",
         "puppeteer": "^24.36.1"

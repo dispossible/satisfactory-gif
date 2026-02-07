@@ -2,8 +2,6 @@
 setlocal enabledelayedexpansion
 
 call scripts/check-node.bat
-
-echo Starting gif creation...
-call npm start
+call npm run import-saves
 
 pause

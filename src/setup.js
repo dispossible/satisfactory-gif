@@ -2,10 +2,11 @@ import fsSync from "node:fs";
 import fsAsync from "node:fs/promises";
 import path from "node:path";
 import { SAVES_PATH, OUTPUT_PATH, SCREENSHOTS_PATH, TRANSPARENT_PATH, FRAME_PATH } from "./vars.js";
+import { askYesNoQuestion } from "./utils/ask.js";
 
 export default async function setup() {
     await ensureDirectories();
-    copySaveFiles();
+    await copySaveFiles();
     console.log("Setup complete");
 }
 
@@ -36,7 +37,7 @@ function getMasterSavesPath() {
     throw new Error("Unsupported platform or environment variables not set");
 }
 
-async function ensureDirectories() {
+export async function ensureDirectories() {
     console.log("Setting up directories...");
     await fsAsync.mkdir(SAVES_PATH, { recursive: true });
     await fsAsync.mkdir(OUTPUT_PATH, { recursive: true });
@@ -45,12 +46,20 @@ async function ensureDirectories() {
     await fsAsync.mkdir(FRAME_PATH, { recursive: true });
 }
 
-function copySaveFiles() {
+export async function copySaveFiles() {
     const localSavesExist = fsSync.existsSync(SAVES_PATH) && fsSync.readdirSync(SAVES_PATH).length > 0;
 
     if (localSavesExist) {
-        console.log("Local saves directory already contains files. Continuing with these files.");
-        return;
+        console.log("Local saves directory already contains files.");
+        const overwrite = await askYesNoQuestion(
+            "Do you want to overwrite the local saves with the latest ones from the game? (y/n): ",
+        );
+        if (!overwrite) {
+            console.log("Using existing local saves.");
+            return;
+        }
+        await fsAsync.rm(SAVES_PATH, { recursive: true, force: true });
+        await fsAsync.mkdir(SAVES_PATH, { recursive: true });
     }
 
     const masterSavesPath = getMasterSavesPath();
@@ -90,7 +99,12 @@ function copySaveFiles() {
         const destPath = path.join(SAVES_PATH, file);
         const stat = fsSync.statSync(sourcePath);
 
-        if (stat.isFile()) {
+        if (
+            stat.isFile() &&
+            path.extname(file).toLowerCase() === ".sav" &&
+            !file.toLowerCase().includes("_autosave_") &&
+            !file.toLowerCase().includes("_continue.sav")
+        ) {
             fsSync.copyFileSync(sourcePath, destPath);
             console.log(`Copied: ${file}`);
             fileCount++;
