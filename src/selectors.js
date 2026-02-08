@@ -28,3 +28,4 @@ export const STAT_OPTIONS_SELECTOR = "a[href='#statisticsModalOptions']";
 export const CIRCUIT_TOGGLE_SELECTOR = "#inputShowCircuitsColors";
 export const OPTIONS_MODAL_CLOSE_SELECTOR = "#optionsModal .modal-header button.close";
 export const CANVAS_SELECTOR = ".leaflet-overlay-pane canvas";
+export const CANVAS_TILES_SELECTOR = ".leaflet-tile-container";

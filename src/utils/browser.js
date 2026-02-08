@@ -1,5 +1,5 @@
 import { Browser, Page } from "puppeteer";
-import { MAP_URL, SAVES_PATH, SCREENSHOTS_PATH, TRANSPARENT_PATH } from "../vars.js";
+import { MAP_URL, SAVES_PATH, SCREENSHOTS_PATH, TRANSPARENT_PATH, ZOOM_LEVEL } from "../vars.js";
 import {
     MODAL_SELECTOR,
     COOKIE_DIALOG_SELECTOR,
@@ -18,14 +18,18 @@ import {
     MAP_BUTTON_SELECTORS,
     MAP_SELECTOR,
     CANVAS_SELECTOR,
+    CANVAS_TILES_SELECTOR,
 } from "../selectors.js";
 import { retry, wait } from "./wait.js";
-import fs from "fs/promises";
-import { getScreenshotName } from "./files.js";
+import fsSync from "fs";
 import path from "node:path";
+import { PNG } from "pngjs";
+import { validateScreenshot } from "./image.js";
+
+/** @typedef {import("./files.js").SaveFile} SaveFile */
 
 /**
- * @param {string} saveFile
+ * @param {SaveFile} saveFile
  */
 export function screenshotFile(saveFile) {
     /**
@@ -46,7 +50,7 @@ export function screenshotFile(saveFile) {
             await configureMapView(page);
             await takeScreenshot(page, saveFile);
         } catch (err) {
-            console.error(`Failed: ${saveFile}`, err);
+            console.error(`Failed: ${saveFile.fileName}`);
             throw err;
         } finally {
             page?.close();
@@ -109,17 +113,17 @@ async function openPage(browser) {
 
 /**
  * @param {Page} page
- * @param {string} fileName
+ * @param {SaveFile} saveFile
  * @returns {Promise<Page>}
  */
-async function loadMap(page, fileName) {
-    console.log(`Opening file '${fileName}'`);
+async function loadMap(page, saveFile) {
+    console.log(`Opening file '${saveFile.fileName}'`);
 
     await page.waitForSelector(SAVE_INPUT_SELECTOR);
     const input = await page.$(SAVE_INPUT_SELECTOR);
 
     // @ts-ignore
-    await input.uploadFile(`${SAVES_PATH}/${fileName}`);
+    await input.uploadFile(path.join(SAVES_PATH, saveFile.fileName));
 
     await page.waitForSelector(LOADING_SELECTOR, { visible: false, timeout: 0 });
     await page.waitForSelector(DOWNLOAD_BUTTON_SELECTOR, { timeout: 0 });
@@ -187,10 +191,10 @@ async function clickButton(page, selector) {
  */
 async function configureMapView(page) {
     console.log("Configuring map view");
+    await setZoomLevel(page);
     await hideMapViewElements(page);
     await clickButton(page, SHOW_PURE_NODES_SELECTOR);
     await clickButton(page, TOGGLE_PURE_NODES_SELECTOR);
-    await setZoomLevel(page);
 }
 
 /**
@@ -210,7 +214,6 @@ async function hideMapViewElements(page) {
             });
         }
     }
-    await wait(5);
 }
 
 /**
@@ -218,55 +221,111 @@ async function hideMapViewElements(page) {
  */
 async function setZoomLevel(page) {
     console.log("Setting zoom level");
-    await page.$eval("body", async () => {
-        window.location.hash = "4.25;0;0|gameLayer|";
-        await new Promise((res) => setTimeout(res, 1000));
-    });
+    await page.$eval(
+        "body",
+        async (body, ZOOM_LEVEL) => {
+            window.location.hash = `${ZOOM_LEVEL};0;0|gameLayer|`;
+            await new Promise((res) => setTimeout(res, 1000));
+        },
+        ZOOM_LEVEL,
+    );
 }
 
 /**
  * @param {Page} page
- * @param {string} fileName
+ * @param {SaveFile} file
  */
-async function takeScreenshot(page, fileName) {
-    await wait(10);
+async function takeScreenshot(page, file) {
+    console.log(`Saving screenshot '${file.imageName}'`);
 
-    const mapBox = await page.$eval(MAP_SELECTOR, (element) => {
+    await ensureMapTilesLoaded(page);
+
+    const mapBox = await page.$eval(MAP_SELECTOR, async (element) => {
         const { x, y, width, height } = element.getBoundingClientRect();
         return { x, y, width, height };
     });
 
-    const screenshotName = getScreenshotName(fileName);
-
-    console.log(`Saving map '${screenshotName}'`);
+    const imagePath = path.join(SCREENSHOTS_PATH, file.imageName);
 
     await page.screenshot({
-        path: path.join(SCREENSHOTS_PATH, screenshotName),
+        path: imagePath,
         clip: mapBox,
     });
-    await saveTransparent(page, screenshotName);
+
+    const isValid = validateScreenshot(imagePath);
+    if (!isValid) {
+        fsSync.rmSync(imagePath);
+        throw new Error(`Screenshot file invalid`);
+    }
+
+    file.hasScreenshot = true;
+
+    await saveTransparent(page, file, mapBox);
 }
 
 /**
  * @param {Page} page
- * @param {string} fileName
+ * @param {SaveFile} saveFile
+ * @param {{ x: number; y: number; width: number; height: number; }} clip
  */
-async function saveTransparent(page, fileName) {
-    const imgData = await page.$eval(CANVAS_SELECTOR, (canvas) => {
-        return canvas.toDataURL();
+async function saveTransparent(page, saveFile, clip) {
+    await page.$eval(CANVAS_SELECTOR, async (canvas) => {
+        // @ts-ignore
+        canvas.parentElement.style.backgroundColor = "black";
+        canvas.style.position = "relative";
+        await new Promise((res) => setTimeout(res, 1000));
     });
-    const offset = await page.$eval(CANVAS_SELECTOR, (canvas) => {
-        const wrapper = document.querySelector("#leafletMap");
-        if (!wrapper) {
-            return { x: 0, y: 0 };
+
+    const tempPath = path.join(TRANSPARENT_PATH, saveFile.imageName.replace(".png", "_temp.png"));
+
+    await page.screenshot({
+        path: tempPath,
+        clip,
+    });
+
+    const imageData = fsSync.readFileSync(tempPath);
+    const png = PNG.sync.read(imageData);
+
+    for (let y = 0; y < png.height; y++) {
+        for (let x = 0; x < png.width; x++) {
+            const idx = (png.width * y + x) << 2;
+
+            const r = png.data[idx];
+            const g = png.data[idx + 1];
+            const b = png.data[idx + 2];
+
+            if (r === 0 && g === 0 && b === 0) {
+                png.data[idx + 3] = 0;
+            }
         }
-        const canvasPos = canvas.getBoundingClientRect();
-        const wrapperPos = wrapper.getBoundingClientRect();
-        return {
-            x: wrapperPos.x - canvasPos.x,
-            y: wrapperPos.y - canvasPos.y,
-        };
+    }
+
+    const buffer = PNG.sync.write(png);
+    fsSync.writeFileSync(path.join(TRANSPARENT_PATH, saveFile.imageName), buffer);
+
+    fsSync.rmSync(tempPath);
+
+    saveFile.hasTransparent = true;
+}
+
+/**
+ * @param {Page} page
+ */
+async function ensureMapTilesLoaded(page) {
+    await page.$eval(CANVAS_TILES_SELECTOR, async (tiles) => {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const images = tiles.querySelectorAll("img");
+        const imagesLoaded = [...images].map((img) => {
+            const testImg = document.createElement("img");
+            const loader = new Promise((resolve, reject) => {
+                testImg.addEventListener("load", resolve);
+                testImg.addEventListener("error", reject);
+            });
+            testImg.src = img.src;
+            return loader;
+        });
+
+        await Promise.all(imagesLoaded);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
     });
-    const offsetFileName = `${fileName}__${offset.x}|${offset.y}`;
-    await fs.writeFile(path.join(TRANSPARENT_PATH, offsetFileName), imgData.split(",")[1], { encoding: "base64" });
 }

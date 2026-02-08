@@ -1,26 +1,46 @@
 import fs from "fs/promises";
 import fsSync from "fs";
-import path from "path";
+import path from "node:path";
 import { Parser } from "@etothepii/satisfactory-file-parser";
-import { SAVES_PATH, SCREENSHOTS_PATH, TRANSPARENT_PATH } from "../vars.js";
+import { FRAME_PATH, SAVES_PATH, SCREENSHOTS_PATH, TRANSPARENT_PATH } from "../vars.js";
 import { askQuestion } from "./ask.js";
 import readline from "node:readline";
+import { validateScreenshot } from "./image.js";
+
 /**
- * @param {string} savFileName
+ * @typedef {{
+ *     fileName: string;
+ *     session: string | null;
+ *     date: Date;
+ *     imageName: string;
+ *     hasScreenshot: boolean;
+ *     hasTransparent: boolean;
+ *     hasFrame: boolean;
+ * }} SaveFile
  */
-export function getScreenshotName(savFileName) {
-    return savFileName.replace(/\.sav$/, ".png");
+
+/**
+ * @param {string} name
+ * @param {Date} date
+ */
+export function getImageName(name, date) {
+    const year = `${date.getFullYear()}`;
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    const hours = `${date.getHours()}`.padStart(2, "0");
+    const minutes = `${date.getMinutes()}`.padStart(2, "0");
+    const seconds = `${date.getSeconds()}`.padStart(2, "0");
+    return year + month + day + hours + minutes + seconds + "__" + name.replace(/\.sav$/, "") + ".png";
 }
 
 /**
- * @returns {Promise<string[]>}
+ * @returns {Promise<SaveFile[]>}
  */
-export async function getSaveFilesToScreenshot() {
+export async function getSaveFiles() {
     const saveFiles = await getAllSaveFiles();
-    const saveFilesWithDates = await addModifiedDateToFileNames(saveFiles);
-    const sessions = await mapFilesToSessions(saveFilesWithDates);
+    const sessions = await mapFilesToSessions(saveFiles);
     const sessionFiles = await selectSession(sessions);
-    return sessionFiles;
+    return sessionFiles.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
 export async function getScreenshotFiles() {
@@ -31,48 +51,50 @@ export async function getScreenshotFiles() {
     );
 }
 
+/**
+ * @returns {Promise<SaveFile[]>}
+ */
 async function getAllSaveFiles() {
     console.log("Getting save files");
-    const filesInFolder = await fs.readdir(SAVES_PATH);
+    const fileNames = await fs.readdir(SAVES_PATH);
 
-    const filesToProcess = filesInFolder.filter(
+    const savFileNames = fileNames.filter(
         (fileName) =>
             path.extname(fileName).toLowerCase() === ".sav" &&
             !fileName.toLowerCase().includes("_autosave_") &&
             !fileName.toLowerCase().includes("_continue.sav"),
     );
 
-    return filesToProcess;
-}
+    const screenshotNames = (await fs.readdir(SCREENSHOTS_PATH)).filter((fileName) => fileName.endsWith(".png"));
+    const transparentNames = (await fs.readdir(TRANSPARENT_PATH)).filter((fileName) => fileName.endsWith(".png"));
+    const frameNames = (await fs.readdir(FRAME_PATH)).filter((fileName) => fileName.endsWith(".png"));
 
-/**
- * @param {string[]} filesToProcess
- * @returns {Promise<string[]>}
- */
-async function addModifiedDateToFileNames(filesToProcess) {
-    console.log("Assigning modified dates");
-    const renamedFiles = [...filesToProcess];
-    // Prepend the modified date to ensure ordering
-    for (const [i, fileName] of filesToProcess.entries()) {
-        if (!/^\d{14}__/.test(fileName)) {
-            const filePath = path.join(SAVES_PATH, fileName);
-            const stat = await fs.stat(filePath);
-            const createdAt = stat.mtime;
+    /** @type {SaveFile[]} */
+    const fileData = [];
+    for (const savFile of savFileNames) {
+        console.log(`Reading ${savFile}`);
+        const filePath = path.join(SAVES_PATH, savFile);
+        const stat = await fs.stat(filePath);
+        const saveDate = stat.mtime;
 
-            const year = String(createdAt.getFullYear());
-            const month = String(createdAt.getMonth() + 1).padStart(2, "0");
-            const day = String(createdAt.getDate()).padStart(2, "0");
-            const hours = String(createdAt.getHours()).padStart(2, "0");
-            const minutes = String(createdAt.getMinutes()).padStart(2, "0");
-            const seconds = String(createdAt.getSeconds()).padStart(2, "0");
+        const session = await getSessionName(savFile);
 
-            const newName = `${year}${month}${day}${hours}${minutes}${seconds}__${fileName}`;
+        const imageName = getImageName(session ?? savFile, saveDate);
+        const hasScreenshot = screenshotNames.includes(imageName);
+        const hasValidScreenshot = hasScreenshot && validateScreenshot(path.join(SCREENSHOTS_PATH, imageName));
 
-            await fs.rename(filePath, path.join(SAVES_PATH, newName));
-            renamedFiles[i] = newName;
-        }
+        fileData.push({
+            fileName: savFile,
+            session,
+            date: saveDate,
+            imageName,
+            hasScreenshot: hasValidScreenshot,
+            hasTransparent: transparentNames.includes(imageName),
+            hasFrame: frameNames.includes(imageName),
+        });
     }
-    return renamedFiles.sort((a, b) => a.localeCompare(b));
+
+    return fileData.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
 /**
@@ -90,28 +112,22 @@ export async function getSessionName(fileName) {
 }
 
 /**
- * @param {string[]} files
- * @returns {Promise<Map<string, string[]>>}
+ * @param {SaveFile[]} files
+ * @returns {Promise<Map<string, SaveFile[]>>}
  */
 async function mapFilesToSessions(files) {
     console.log("Checking for game sessions");
-    /** @type Map<string, string[]> */
+    /** @type Map<string, SaveFile[]> */
     const sessionNameMap = new Map();
 
-    for (const fileName of files) {
-        console.log(`Checking session name for ${fileName}`);
-
-        const sessionName = await getSessionName(fileName);
-        if (sessionName) {
-            console.log(`Session name found: ${sessionName}`);
-            if (sessionNameMap.has(sessionName)) {
+    for (const file of files) {
+        if (file.session) {
+            if (sessionNameMap.has(file.session)) {
                 // @ts-ignore
-                sessionNameMap.get(sessionName).push(fileName);
+                sessionNameMap.get(file.session).push(file);
             } else {
-                sessionNameMap.set(sessionName, [fileName]);
+                sessionNameMap.set(file.session, [file]);
             }
-        } else {
-            console.error(`Failed to find session name`);
         }
     }
 
@@ -123,7 +139,7 @@ async function mapFilesToSessions(files) {
  * @return {string | null}
  */
 function getSessionFromFileName(fileName) {
-    const match = fileName.match(/^\d{14}__(.*?)_\d{6}-\d{6}/);
+    const match = fileName.match(/^(.*?)_\d{6}-\d{6}/);
     return match ? match[1] : null;
 }
 
@@ -152,8 +168,8 @@ async function parseSaveFile(fileName) {
 }
 
 /**
- * @param {Map<string, string[]>} sessionNameMap
- * @returns {Promise<string[]>}
+ * @param {Map<string, SaveFile[]>} sessionNameMap
+ * @returns {Promise<SaveFile[]>}
  */
 async function selectSession(sessionNameMap) {
     if (sessionNameMap.size > 1) {
