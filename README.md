@@ -7,6 +7,12 @@ This tool creates an animated GIF / video that shows how a Satisfactory save exp
 - **What it does**: Records the map view of a Satisfactory save over time and compiles the captured frames into an animated GIF and video so you can watch your factory grow.
 - **How it works (high-level)**: The program opens saved games in the [Satisfactory interactive map](https://satisfactory-calculator.com/en/interactive-map), captures screenshots at set intervals/positions, stores the screenshots, and stitches them together into a sequence.
 
+### Example
+
+<video width="600" height="600" autoplay muted controls loop>
+    <source src="./example/animation-example.mp4" type="video/mp4" />
+</video>
+
 ## Quick Start
 
 - **Run on Linux / macOS**: Execute the shell runner from the repository root:
