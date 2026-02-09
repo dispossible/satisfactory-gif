@@ -13,6 +13,8 @@ This tool creates an animated GIF / video that shows how a Satisfactory save exp
     <source src="./example/animation-example.mp4" type="video/mp4" />
 </video>
 
+[/example/animation-example.mp4](./example/animation-example.mp4)
+
 ## Quick Start
 
 - **Run on Linux / macOS**: Execute the shell runner from the repository root:
