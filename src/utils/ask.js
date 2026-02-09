@@ -31,3 +31,8 @@ export async function askYesNoQuestion(query) {
     console.log("Invalid input, please enter 'y' or 'n'");
     return askYesNoQuestion(query);
 }
+
+export function clearLastLine() {
+    readline.moveCursor(process.stdout, 0, -1); // up one line
+    readline.clearLine(process.stdout, 1); // from cursor to end
+}

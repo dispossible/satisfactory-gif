@@ -24,3 +24,6 @@ export const CONCURRENCY = 1;
 export const SEA_COLOR = { r: 75, g: 111, b: 120 };
 /** @type {PxColor} */
 export const VOID_COLOR = { r: 5, g: 3, b: 4 };
+
+export const TRANSITION_FRAMES = 8;
+export const TRANSITION_FPS = 30;

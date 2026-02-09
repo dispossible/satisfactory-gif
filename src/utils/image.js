@@ -101,8 +101,7 @@ export function getMapBounds(path) {
     return {
         x: left - MAP_PADDING,
         y: top - MAP_PADDING,
-        width: size + MAP_PADDING * 2,
-        height: size + MAP_PADDING * 2,
+        size: size + MAP_PADDING * 2,
     };
 }
 
