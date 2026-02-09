@@ -41,7 +41,6 @@ export function getMapBounds(path) {
     let top = 0;
     let right = width;
     let bottom = height;
-    console.log("Initial image size: ", { width, height });
 
     /**
      * @param {number} x
@@ -172,7 +171,16 @@ export async function getZoomBounds(transparent, x, y, width, height) {
 
     const areaWidth = maxX - minX;
     const areaHeight = maxY - minY;
+
     let areaSize = Math.max(areaWidth, areaHeight);
+    if (areaWidth > areaHeight) {
+        const offset = areaWidth - areaHeight;
+        minY -= offset / 2;
+    }
+    if (areaHeight > areaWidth) {
+        const offset = areaHeight - areaWidth;
+        minX -= offset / 2;
+    }
 
     let areaX = minX - ZOOM_PADDING;
     let areaY = minY - ZOOM_PADDING;

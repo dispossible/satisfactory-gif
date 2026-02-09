@@ -3,7 +3,7 @@ import fsSync from "fs";
 import path from "node:path";
 import { Parser } from "@etothepii/satisfactory-file-parser";
 import { FRAME_PATH, SAVES_PATH, SCREENSHOTS_PATH, TRANSPARENT_PATH } from "../vars.js";
-import { askQuestion } from "./ask.js";
+import { askQuestion, clearLastLine } from "./ask.js";
 import readline from "node:readline";
 import { validateScreenshot } from "./image.js";
 
@@ -71,13 +71,22 @@ async function getAllSaveFiles() {
 
     /** @type {SaveFile[]} */
     const fileData = [];
-    for (const savFile of savFileNames) {
-        console.log(`Reading ${savFile}`);
+    /** @type {string[]} */
+    const oldSaves = [];
+    console.log("");
+    for (const [i, savFile] of savFileNames.entries()) {
+        clearLastLine();
+        console.log(`Reading save file: ${i + 1} / ${savFileNames.length} - ${savFile}`);
         const filePath = path.join(SAVES_PATH, savFile);
         const stat = await fs.stat(filePath);
         const saveDate = stat.mtime;
 
         const session = await getSessionName(savFile);
+        const isOldSave = !!(await getOldSaveSessionName(savFile));
+        if (isOldSave) {
+            oldSaves.push(savFile);
+            continue;
+        }
 
         const imageName = getImageName(session ?? savFile, saveDate);
         const hasScreenshot = screenshotNames.includes(imageName);
@@ -92,6 +101,12 @@ async function getAllSaveFiles() {
             hasTransparent: transparentNames.includes(imageName),
             hasFrame: frameNames.includes(imageName),
         });
+    }
+
+    if (oldSaves.length > 0) {
+        console.warn(
+            `${oldSaves.length} files were skipped due to being older than Update 6, please open them in-game to make them valid`,
+        );
     }
 
     return fileData.sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -163,7 +178,8 @@ async function parseSaveFile(fileName) {
         const save = Parser.ParseSave(fileName, file, { throwErrors: true });
         return save;
     } catch (err) {
-        console.error(`Error: Failed to parse save file ${fileName} for session name`, err);
+        // @ts-ignore
+        console.error(`Error: Failed to parse save file ${fileName}: `, err.message);
     }
 }
 

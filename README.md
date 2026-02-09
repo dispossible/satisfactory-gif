@@ -5,7 +5,7 @@ This tool creates an animated GIF / video that shows how a Satisfactory save exp
 ## Overview
 
 - **What it does**: Records the map view of a Satisfactory save over time and compiles the captured frames into an animated GIF and video so you can watch your factory grow.
-- **How it works (high-level)**: The program opens saved games in the [Satisfactory interactive map](https://satisfactory-calculator.com/en/interactive-map), captures screenshots at set intervals/positions, stores the screenshots, and stitches them together into a sequence.
+- **How it works (high-level)**: The program opens saved games in the [Satisfactory Calculator Interactive Map](https://satisfactory-calculator.com/en/interactive-map) (SCIM), captures screenshots at set intervals/positions, stores the screenshots, and stitches them together into a sequence.
 
 ### Example
 
@@ -40,6 +40,8 @@ This tool creates an animated GIF / video that shows how a Satisfactory save exp
 - **Automatic**: If you run the main program without any save games present, it will run the save import script.
 - **Import script**: Use the included import scripts if you want to pull in your save games from your game installation. They are provided as `import-saves.sh` and `import-saves.bat`.
 - **Manual import**: If the automatic import doesn't find your saves, manually place `.sav` files into the local `saves/` directory.
+
+**WARNING**: Save games that are older than Update 6 will **not work**, as they are not supported by SCIM. This script will automatically exclude them if found. You should be able to open these files in game and they will be updated to the new version. (Re-run the import script after doing so)
 
 ### Running the Program
 

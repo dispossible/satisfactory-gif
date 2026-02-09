@@ -129,8 +129,6 @@ async function createGif(saveFiles, gifName = "animation.gif") {
     };
     let prevScreenshot = await loadImage(firstScreenshotPath);
 
-    console.log("Map bounds: ", { x, y, size });
-
     const gifSize = size / 4;
 
     const stream = mapImagesToGif(saveFiles, gifName, gifSize, gifSize);
@@ -141,15 +139,16 @@ async function createGif(saveFiles, gifName = "animation.gif") {
         const srcY = y + zoomBounds.y;
 
         if (index === 0) {
-            encoder.setDelay(3000);
+            console.log("");
+            encoder.setDelay(2000);
             ctx.drawImage(screenshot, x, y, size, size, 0, 0, gifSize, gifSize);
             encoder.addFrame(ctx);
         }
 
         encoder.setDelay(1000 / TRANSITION_FPS);
-        console.log("");
-        for (let i = 0; i <= TRANSITION_FRAMES; i++) {
-            const distance = i / TRANSITION_FRAMES;
+        const transitionFrames = TRANSITION_FRAMES;
+        for (let i = 0; i <= transitionFrames; i++) {
+            const distance = i / transitionFrames;
             clearLastLine();
             console.log(`Encoding frame: ${index + 1} / ${saveFiles.length} - ${Math.round(distance * 100)}%`);
             const transitionX = lerp(x + previousBounds.x, x + zoomBounds.x, distance);

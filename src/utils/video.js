@@ -23,8 +23,9 @@ export async function convertGifToVideo(gifName) {
                 console.log("Converting GIF to MP4");
             })
             .on("progress", (progress) => {
-                if ((progress.percent ?? 0) <= 100) {
-                    console.log(`Video progress: ${Math.round(progress.percent ?? 0)}%`);
+                const percent = Math.round(progress.percent ?? 0);
+                if (percent <= 100 && percent >= 0) {
+                    console.log(`Video progress: ${percent}%`);
                 }
             })
             .on("error", (err) => {

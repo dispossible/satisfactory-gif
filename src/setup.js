@@ -2,7 +2,7 @@ import fsSync from "node:fs";
 import fsAsync from "node:fs/promises";
 import path from "node:path";
 import { SAVES_PATH, OUTPUT_PATH, SCREENSHOTS_PATH, TRANSPARENT_PATH, FRAME_PATH } from "./vars.js";
-import { askYesNoQuestion } from "./utils/ask.js";
+import { askYesNoQuestion, clearLastLine } from "./utils/ask.js";
 
 export default async function setup() {
     await ensureDirectories();
@@ -38,7 +38,7 @@ function getMasterSavesPath() {
 }
 
 export async function ensureDirectories() {
-    console.log("Setting up directories...");
+    console.log("Setting up directories");
     await fsAsync.mkdir(SAVES_PATH, { recursive: true });
     await fsAsync.mkdir(OUTPUT_PATH, { recursive: true });
     await fsAsync.mkdir(SCREENSHOTS_PATH, { recursive: true });
@@ -50,12 +50,12 @@ export async function copySaveFiles() {
     const localSavesExist = fsSync.existsSync(SAVES_PATH) && fsSync.readdirSync(SAVES_PATH).length > 0;
 
     if (localSavesExist) {
-        console.log("Local saves directory already contains files.");
+        console.log("Local saves directory already contains files");
         const overwrite = await askYesNoQuestion(
             "Do you want to overwrite the local saves with the latest ones from the game? (y/n): ",
         );
         if (!overwrite) {
-            console.log("Using existing local saves.");
+            console.log("Using existing local saves");
             return;
         }
         await fsAsync.rm(SAVES_PATH, { recursive: true, force: true });
@@ -92,8 +92,9 @@ export async function copySaveFiles() {
     const files = fsSync.readdirSync(sourceDir);
     let fileCount = 0;
 
-    console.log(`Copying save files from ${sourceDir} to local saves directory...`);
+    console.log(`Copying save files from ${sourceDir} to local saves directory`);
 
+    console.log("");
     for (const file of files) {
         const sourcePath = path.join(sourceDir, file);
         const destPath = path.join(SAVES_PATH, file);
@@ -106,6 +107,7 @@ export async function copySaveFiles() {
             !file.toLowerCase().includes("_continue.sav")
         ) {
             fsSync.copyFileSync(sourcePath, destPath);
+            clearLastLine();
             console.log(`Copied: ${file}`);
             fileCount++;
         }
@@ -115,5 +117,5 @@ export async function copySaveFiles() {
         throw new Error(`Error: No save files found in ${sourceDir}`);
     }
 
-    console.log(`Copied ${fileCount} save files.`);
+    console.log(`Copied ${fileCount} save files`);
 }
