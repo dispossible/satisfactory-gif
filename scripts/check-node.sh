@@ -11,7 +11,18 @@ else
     echo "Found Node.js version: $NODE_VERSION"
 fi
 
-# 2. Run npm install
+# 2. Ensure FFmpeg is installed
+echo "Checking for FFmpeg installation..."
+if ! command -v ffmpeg &> /dev/null; then
+    echo "Error: FFmpeg is not installed or not in PATH"
+    echo "Please install FFmpeg from https://ffmpeg.org/"
+    exit 1
+else
+    FFMPEG_VERSION=$(ffmpeg -version | head -n 1)
+    echo "Found FFmpeg: $FFMPEG_VERSION"
+fi
+
+# 3. Run npm install
 echo "Installing dependencies..."
 npm install
 if [ $? -ne 0 ]; then

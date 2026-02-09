@@ -1,11 +1,11 @@
 # Satisfactory GIFs
 
-This tool creates an animated GIF that shows how a Satisfactory save expands over time using the Satisfactory interactive map.
+This tool creates an animated GIF / video that shows how a Satisfactory save expands over time using the Satisfactory interactive map.
 
 ## Overview
 
-- **What it does**: Records the map view of a Satisfactory save over time and compiles the captured frames into an animated GIF so you can watch your factory grow.
-- **How it works (high-level)**: The program opens saved games in the Satisfactory map view, captures screenshots at set intervals/positions, stores frames and screenshots in the `output` folder, and stitches frames together into a GIF. This README focuses on how to run and troubleshoot the tool rather than internal implementation details.
+- **What it does**: Records the map view of a Satisfactory save over time and compiles the captured frames into an animated GIF and video so you can watch your factory grow.
+- **How it works (high-level)**: The program opens saved games in the [Satisfactory interactive map](https://satisfactory-calculator.com/en/interactive-map), captures screenshots at set intervals/positions, stores the screenshots, and stitches them together into a sequence.
 
 ## Quick Start
 
@@ -24,6 +24,7 @@ This tool creates an animated GIF that shows how a Satisfactory save expands ove
 ### Prerequisites
 
 - **Node.js**: Make sure you have [Node.js](https://nodejs.org/) installed on your machine to run this script.
+- **FFmpeg**: This tool requires [FFmpeg](https://ffmpeg.org/) to be installed and available in your PATH. FFmpeg is used to compile video frames into the final GIF.
 - **Satisfactory saves**: You need one or more `.sav` files (Satisfactory save files). The script will automatically import them, but you can put them in the `saves/` folder manually if you prefer or use the separate import script.
 
 ### Importing Saves
@@ -42,7 +43,7 @@ This tool creates an animated GIF that shows how a Satisfactory save expands ove
 - **`output/frames/`**: Raw image frames captured during the run. These are the images stitched into the final GIF.
 - **`output/screenshots/`**: Screenshots for each step — useful to inspect visual problems in the map capture.
 - **`output/transparent/`**: Contains screenshots with the map layer hidden.
-- **Final GIF**: The final animated GIF is produced from the frames and will be saved under `output/`.
+- **Final outputs**: Both a video file and an animated GIF are saved under `output/`. The GIF file can become **very large** (several hundred MB or more), while the video file will be **significantly smaller** and is recommended for sharing.
 
 ## Upgrading & Re-running
 

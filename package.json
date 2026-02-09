@@ -13,6 +13,7 @@
     "dependencies": {
         "@etothepii/satisfactory-file-parser": "^3.3.0",
         "canvas": "^3.2.1",
+        "fluent-ffmpeg": "^2.1.3",
         "gif-encoder-2": "^1.0.5",
         "pngjs": "^7.0.0",
         "puppeteer": "^24.36.1"

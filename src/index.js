@@ -19,6 +19,7 @@ import { getSaveFiles } from "./utils/files.js";
 import { getMapBounds, getZoomBounds, loadImage } from "./utils/image.js";
 import { lerp } from "./utils/math.js";
 import { clearLastLine } from "./utils/ask.js";
+import { convertGifToVideo } from "./utils/video.js";
 
 /** @typedef {import("./utils/files.js").SaveFile} SaveFile */
 /** @typedef {import("./vars.js").PxColor} PxColor */
@@ -39,7 +40,9 @@ import { clearLastLine } from "./utils/ask.js";
 
     const sessionName = saves[0].session;
 
+    const gifName = `animation-${sessionName}.gif`;
     await createGif(saves, `animation-${sessionName}.gif`);
+    await convertGifToVideo(gifName);
 })();
 
 /**
@@ -190,7 +193,8 @@ async function createGif(saveFiles, gifName = "animation.gif") {
 async function* mapImagesToGif(files, outputFilename, width, height) {
     console.log("Creating GIF");
 
-    const stream = fsSync.createWriteStream(path.join(OUTPUT_PATH, outputFilename));
+    const gifPath = path.join(OUTPUT_PATH, outputFilename);
+    const stream = fsSync.createWriteStream(gifPath);
     const result = new Promise((r) => stream.on("close", r));
 
     const encoder = new GIFEncoder(width, height);
@@ -220,7 +224,7 @@ async function* mapImagesToGif(files, outputFilename, width, height) {
     }
 
     encoder.finish();
-    console.log("GIF created");
-
     await result;
+
+    console.log(`GIF created: ${gifPath}`);
 }
