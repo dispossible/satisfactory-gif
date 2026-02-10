@@ -1,6 +1,7 @@
 import Ffmpeg from "fluent-ffmpeg";
 import { OUTPUT_PATH } from "../vars.js";
 import path from "node:path";
+import { replaceLastLog } from "./ask.js";
 
 /**
  * @param {string} gifName
@@ -21,11 +22,12 @@ export async function convertGifToVideo(gifName) {
             .toFormat("mp4")
             .on("start", () => {
                 console.log("Converting GIF to MP4");
+                console.log("");
             })
             .on("progress", (progress) => {
                 const percent = Math.round(progress.percent ?? 0);
                 if (percent <= 100 && percent >= 0) {
-                    console.log(`Video progress: ${percent}%`);
+                    replaceLastLog(`Video progress: ${percent}%`);
                 }
             })
             .on("error", (err) => {

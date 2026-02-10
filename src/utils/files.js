@@ -3,7 +3,7 @@ import fsSync from "fs";
 import path from "node:path";
 import { Parser } from "@etothepii/satisfactory-file-parser";
 import { FRAME_PATH, SAVES_PATH, SCREENSHOTS_PATH, TRANSPARENT_PATH } from "../vars.js";
-import { askQuestion, clearLastLine } from "./ask.js";
+import { askQuestion, replaceLastLog } from "./ask.js";
 import readline from "node:readline";
 import { validateScreenshot } from "./image.js";
 
@@ -75,8 +75,7 @@ async function getAllSaveFiles() {
     const oldSaves = [];
     console.log("");
     for (const [i, savFile] of savFileNames.entries()) {
-        clearLastLine();
-        console.log(`Reading save file: ${i + 1} / ${savFileNames.length} - ${savFile}`);
+        replaceLastLog(`Reading save file: ${i + 1} / ${savFileNames.length} - ${savFile}`);
         const filePath = path.join(SAVES_PATH, savFile);
         const stat = await fs.stat(filePath);
         const saveDate = stat.mtime;
@@ -89,15 +88,13 @@ async function getAllSaveFiles() {
         }
 
         const imageName = getImageName(session ?? savFile, saveDate);
-        const hasScreenshot = screenshotNames.includes(imageName);
-        const hasValidScreenshot = hasScreenshot && validateScreenshot(path.join(SCREENSHOTS_PATH, imageName));
 
         fileData.push({
             fileName: savFile,
             session,
             date: saveDate,
             imageName,
-            hasScreenshot: hasValidScreenshot,
+            hasScreenshot: screenshotNames.includes(imageName),
             hasTransparent: transparentNames.includes(imageName),
             hasFrame: frameNames.includes(imageName),
         });

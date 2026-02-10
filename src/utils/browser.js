@@ -31,7 +31,7 @@ import { validateScreenshot } from "./image.js";
 /**
  * @param {SaveFile} saveFile
  */
-export function screenshotFile(saveFile) {
+export function screenshotFileFn(saveFile) {
     /**
      * @param {Browser} browser
      */
@@ -236,7 +236,7 @@ async function setZoomLevel(page) {
  * @param {SaveFile} file
  */
 async function takeScreenshot(page, file) {
-    console.log(`Saving screenshot '${file.imageName}'`);
+    console.log(`Saving screenshot: ${file.imageName}`);
 
     await ensureMapTilesLoaded(page);
 

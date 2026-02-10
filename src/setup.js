@@ -2,7 +2,7 @@ import fsSync from "node:fs";
 import fsAsync from "node:fs/promises";
 import path from "node:path";
 import { SAVES_PATH, OUTPUT_PATH, SCREENSHOTS_PATH, TRANSPARENT_PATH, FRAME_PATH } from "./vars.js";
-import { askYesNoQuestion, clearLastLine } from "./utils/ask.js";
+import { askYesNoQuestion, replaceLastLog } from "./utils/ask.js";
 
 export default async function setup() {
     await ensureDirectories();
@@ -107,8 +107,7 @@ export async function copySaveFiles() {
             !file.toLowerCase().includes("_continue.sav")
         ) {
             fsSync.copyFileSync(sourcePath, destPath);
-            clearLastLine();
-            console.log(`Copied: ${file}`);
+            replaceLastLog(`Copied: ${file}`);
             fileCount++;
         }
     }

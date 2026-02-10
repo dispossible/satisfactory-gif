@@ -7,18 +7,17 @@ import {
     OUTPUT_PATH,
     SCREENSHOTS_PATH,
     TRANSPARENT_PATH,
-    FRAME_PATH,
     RESOLUTION,
     CONCURRENCY,
     TRANSITION_FPS,
     TRANSITION_FRAMES,
 } from "./vars.js";
 import { ensureDirectories, copySaveFiles } from "./setup.js";
-import { screenshotFile } from "./utils/browser.js";
+import { screenshotFileFn } from "./utils/browser.js";
 import { getSaveFiles } from "./utils/files.js";
-import { getMapBounds, getZoomBounds, loadImage } from "./utils/image.js";
+import { getMapBounds, getZoomBounds, loadImage, validateScreenshot } from "./utils/image.js";
 import { lerp } from "./utils/math.js";
-import { clearLastLine } from "./utils/ask.js";
+import { replaceLastLog } from "./utils/ask.js";
 import { convertGifToVideo } from "./utils/video.js";
 
 /** @typedef {import("./utils/files.js").SaveFile} SaveFile */
@@ -29,87 +28,88 @@ import { convertGifToVideo } from "./utils/video.js";
     let saves = await getSaveFiles();
 
     if (!saves.length) {
-        console.log("No saves to process, attempting import");
+        console.log("No saves to process, running import script");
         await copySaveFiles();
         saves = await getSaveFiles();
     }
 
     const savesToProcess = await getFilesForScreenshot(saves);
-    const processingTasks = savesToProcess.map((saveFile) => screenshotFile(saveFile));
-    await runWithConcurrency(processingTasks, CONCURRENCY);
+    await runWithConcurrency(savesToProcess);
 
     const sessionName = saves[0].session;
 
     const gifName = `animation-${sessionName}.gif`;
-    await createGif(saves, `animation-${sessionName}.gif`);
+    await createGif(saves, gifName);
     await convertGifToVideo(gifName);
 })();
 
 /**
  * Run promises with concurrency limit
- * @template T
- * @param {((browser: Browser) => Promise<T>)[]} jobs
- * @param {number} concurrentAmount
- * @returns {Promise<T[]>}
+ * @param {SaveFile[]} saveFiles
+ * @returns {Promise<void>}
  */
-async function runWithConcurrency(jobs, concurrentAmount) {
-    const jobQueue = jobs.map((fn) => {
+async function runWithConcurrency(saveFiles) {
+    const jobQueue = saveFiles.map((saveFile) => {
         return {
-            jobFn: fn,
+            jobFn: screenshotFileFn(saveFile),
             retries: 0,
         };
     });
-    /** @type {T[]} */
-    const results = [];
 
-    return new Promise((resolveQueue, rejectQueue) => {
-        const workers = new Array(concurrentAmount).fill("").map(async () => {
-            const browser = await puppeteer.launch({
-                headless: false,
-                defaultViewport: {
-                    width: RESOLUTION,
-                    height: RESOLUTION,
-                    deviceScaleFactor: 1,
-                },
-            });
+    let failedJobs = 0;
 
-            while (jobQueue.length > 0) {
-                const job = jobQueue.shift();
-                if (job) {
-                    console.log(`Starting job, ${jobQueue.length} remaining`);
-                    try {
-                        const result = await job.jobFn(browser);
-                        results.push(result);
-                    } catch (err) {
-                        console.error(err);
-                        if (job.retries < 3) {
-                            console.error("Job failed, retrying");
-                            job.retries += 1;
-                            jobQueue.unshift(job);
-                        } else {
-                            console.error("Job failed, skipping");
-                        }
+    const workers = new Array(CONCURRENCY).fill("").map(async () => {
+        const browser = await puppeteer.launch({
+            headless: false,
+            defaultViewport: {
+                width: RESOLUTION,
+                height: RESOLUTION,
+                deviceScaleFactor: 1,
+            },
+        });
+
+        while (jobQueue.length > 0) {
+            const job = jobQueue.shift();
+            if (job) {
+                const idx = saveFiles.length - jobQueue.length;
+                console.log(`Running screenshot job: ${idx} / ${saveFiles.length}`);
+                try {
+                    await job.jobFn(browser);
+                } catch (err) {
+                    console.error(err);
+                    if (job.retries < 5) {
+                        console.error("Job failed, retrying");
+                        job.retries += 1;
+                        jobQueue.unshift(job);
+                    } else {
+                        console.error("Job failed, skipping");
+                        failedJobs++;
                     }
                 }
             }
+        }
 
-            await browser.close();
-        });
-
-        Promise.all(workers)
-            .then(() => resolveQueue(results))
-            .catch((err) => {
-                rejectQueue(err);
-            });
+        await browser.close();
     });
+
+    await Promise.all(workers);
+
+    if (failedJobs > 0) {
+        throw new Error(`${failedJobs} screenshots failed to complete`);
+    }
 }
 
 /**
  * @param {SaveFile[]} saves
  */
 async function getFilesForScreenshot(saves) {
-    return saves.filter((save) => {
-        return !save.hasScreenshot || !save.hasTransparent;
+    console.log("");
+    return saves.filter((save, i) => {
+        replaceLastLog(`Checking screenshot: ${i + 1} / ${saves.length} - ${save.imageName}`);
+        if (!save.hasScreenshot || !save.hasTransparent) {
+            return true;
+        }
+        return !validateScreenshot(path.join(SCREENSHOTS_PATH, save.imageName));
     });
 }
 
@@ -146,11 +146,11 @@ async function createGif(saveFiles, gifName = "animation.gif") {
         }
 
         encoder.setDelay(1000 / TRANSITION_FPS);
-        const transitionFrames = TRANSITION_FRAMES;
+        const diff = getMotionDiff(previousBounds, zoomBounds);
+        const transitionFrames = Math.round(TRANSITION_FRAMES * diff);
         for (let i = 0; i <= transitionFrames; i++) {
             const distance = i / transitionFrames;
-            clearLastLine();
-            console.log(`Encoding frame: ${index + 1} / ${saveFiles.length} - ${Math.round(distance * 100)}%`);
+            replaceLastLog(`Encoding frame: ${index + 1} / ${saveFiles.length} - ${Math.round(distance * 100)}%`);
             const transitionX = lerp(x + previousBounds.x, x + zoomBounds.x, distance);
             const transitionY = lerp(y + previousBounds.y, y + zoomBounds.y, distance);
             const transitionSize = lerp(previousBounds.size, zoomBounds.size, distance);
@@ -180,6 +180,27 @@ async function createGif(saveFiles, gifName = "animation.gif") {
         previousBounds = zoomBounds;
         prevScreenshot = screenshot;
     }
+}
+
+const MOTION_FACTOR = 500;
+
+/**
+ * @typedef {{
+ *     x: number;
+ *     y: number;
+ *     size: number;
+ * }} Bounds
+ */
+/**
+ * @param {Bounds} a
+ * @param {Bounds} b
+ */
+function getMotionDiff(a, b) {
+    const diffX = Math.abs(a.x - b.x);
+    const diffY = Math.abs(a.y - b.y);
+    const diffSize = Math.abs(a.size - b.size);
+    const maxDiff = Math.max(diffX, diffY, diffSize);
+    return 1 + maxDiff / MOTION_FACTOR;
 }
 
 /**
