@@ -1,7 +1,7 @@
 import puppeteer, { Browser } from "puppeteer";
 import fsSync from "fs";
 import GIFEncoder from "gif-encoder-2";
-import { createCanvas } from "canvas";
+import { Canvas, createCanvas } from "canvas";
 import path from "path";
 import {
     OUTPUT_PATH,
@@ -9,16 +9,17 @@ import {
     TRANSPARENT_PATH,
     RESOLUTION,
     CONCURRENCY,
-    TRANSITION_FPS,
+    FPS,
     TRANSITION_FRAMES,
+    FRAME_PATH,
 } from "./vars.js";
 import { ensureDirectories, copySaveFiles } from "./setup.js";
 import { screenshotFileFn } from "./utils/browser.js";
-import { getSaveFiles } from "./utils/files.js";
+import { clearFrames, getSaveFiles } from "./utils/files.js";
 import { getMapBounds, getZoomBounds, loadImage, validateScreenshot } from "./utils/image.js";
 import { lerp } from "./utils/math.js";
 import { replaceLastLog } from "./utils/ask.js";
-import { convertGifToVideo } from "./utils/video.js";
+import { convertFramesToVideo } from "./utils/video.js";
 
 /** @typedef {import("./utils/files.js").SaveFile} SaveFile */
 /** @typedef {import("./vars.js").PxColor} PxColor */
@@ -38,9 +39,12 @@ import { convertGifToVideo } from "./utils/video.js";
 
     const sessionName = saves[0].session;
 
+    clearFrames();
+
     const gifName = `animation-${sessionName}.gif`;
     await createGif(saves, gifName);
-    await convertGifToVideo(gifName);
+
+    await convertFramesToVideo(gifName.replace(".gif", ".mp4"));
 })();
 
 /**
@@ -129,10 +133,10 @@ async function createGif(saveFiles, gifName = "animation.gif") {
     };
     let prevScreenshot = await loadImage(firstScreenshotPath);
 
-    const gifSize = size / 4;
+    const outputSize = size / 4;
 
-    const stream = mapImagesToGif(saveFiles, gifName, gifSize, gifSize);
-    for await (const { screenshot, transparent, ctx, index, encoder, file } of stream) {
+    const stream = mapImagesToGif(saveFiles, gifName, outputSize, outputSize);
+    for await (const { screenshot, transparent, ctx, index, encoder, canvas } of stream) {
         const zoomBounds = await getZoomBounds(transparent, x, y, size, size);
 
         const srcX = x + zoomBounds.x;
@@ -141,11 +145,12 @@ async function createGif(saveFiles, gifName = "animation.gif") {
         if (index === 0) {
             console.log("");
             encoder.setDelay(2000);
-            ctx.drawImage(screenshot, x, y, size, size, 0, 0, gifSize, gifSize);
+            ctx.drawImage(screenshot, x, y, size, size, 0, 0, outputSize, outputSize);
             encoder.addFrame(ctx);
+            await saveFrames(canvas, 2000);
         }
 
-        encoder.setDelay(1000 / TRANSITION_FPS);
+        // encoder.setDelay(1000 / FPS);
         const diff = getMotionDiff(previousBounds, zoomBounds);
         const transitionFrames = Math.round(TRANSITION_FRAMES * diff);
         for (let i = 0; i <= transitionFrames; i++) {
@@ -162,19 +167,24 @@ async function createGif(saveFiles, gifName = "animation.gif") {
                 transitionSize,
                 0,
                 0,
-                gifSize,
-                gifSize,
+                outputSize,
+                outputSize,
             );
             ctx.globalAlpha = distance;
-            ctx.drawImage(screenshot, transitionX, transitionY, transitionSize, transitionSize, 0, 0, gifSize, gifSize);
+            ctx.drawImage(screenshot, transitionX, transitionY, transitionSize, transitionSize, 0, 0, outputSize, outputSize);
             ctx.globalAlpha = 1;
-            encoder.addFrame(ctx);
+            //encoder.addFrame(ctx);
+            await saveFrame(canvas);
         }
 
-        ctx.drawImage(screenshot, srcX, srcY, zoomBounds.size, zoomBounds.size, 0, 0, gifSize, gifSize);
+        ctx.drawImage(screenshot, srcX, srcY, zoomBounds.size, zoomBounds.size, 0, 0, outputSize, outputSize);
+        await saveFrame(canvas);
 
         if (index === saveFiles.length - 1) {
+            await saveFrames(canvas, 5000);
             encoder.setDelay(5000);
+        } else {
+            encoder.setDelay(250);
         }
         encoder.addFrame(ctx);
         previousBounds = zoomBounds;
@@ -221,7 +231,6 @@ async function* mapImagesToGif(files, outputFilename, width, height) {
 
     encoder.createReadStream().pipe(stream);
     encoder.start();
-    encoder.setDelay(250); // frame length in ms
 
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext("2d");
@@ -231,20 +240,38 @@ async function* mapImagesToGif(files, outputFilename, width, height) {
         const transparent = await loadImage(path.join(TRANSPARENT_PATH, file.imageName));
 
         // We expect the caller to draw the image to the ctx and the encoder
-        yield { screenshot, transparent, ctx, index, encoder, file };
-
-        // Save the frame
-        // const imageStream = canvas.createPNGStream();
-        // const frameFile = fsSync.createWriteStream(path.join(FRAME_PATH, file.imageName));
-        // imageStream.pipe(frameFile);
-        // await new Promise((resolve) => {
-        //     frameFile.on("finish", resolve);
-        // });
-        // file.hasFrame = true;
+        yield { screenshot, transparent, ctx, index, encoder, file, canvas };
     }
 
     encoder.finish();
     await result;
 
     console.log(`GIF created: ${gifPath}`);
+}
+
+let frameCount = 0;
+
+/**
+ * @param {Canvas} canvas
+ */
+async function saveFrame(canvas) {
+    const frameName = frameCount.toString().padStart(6, "0") + ".png";
+    const imageStream = canvas.createPNGStream();
+    const frameFile = fsSync.createWriteStream(path.join(FRAME_PATH, frameName));
+    imageStream.pipe(frameFile);
+    await new Promise((resolve) => {
+        frameFile.on("finish", resolve);
+    });
+    frameCount++;
+}
+
+/**
+ * @param {Canvas} canvas
+ * @param {number} ms
+ */
+async function saveFrames(canvas, ms) {
+    const frames = (ms / 1000) * FPS;
+    for (let i = 0; i < frames; i++) {
+        await saveFrame(canvas);
+    }
 }

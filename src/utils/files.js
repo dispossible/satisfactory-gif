@@ -192,8 +192,13 @@ async function selectSession(sessionNameMap) {
             gameNames.map((name, i) => `${i + 1}. ${name}`).join("\n") +
                 "\nEnter the number of the session you want to process: ",
         );
-        const selectedIndex = parseInt(response) - 1;
-        if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= gameNames.length) {
+        const selectedIndex = parseInt(response, 10) - 1;
+        if (
+            isNaN(selectedIndex) ||
+            selectedIndex < 0 ||
+            selectedIndex >= gameNames.length ||
+            !gameNames[selectedIndex]
+        ) {
             throw new Error("Invalid session selection");
         }
         // @ts-ignore
@@ -218,4 +223,11 @@ async function readFirstLine(fileName) {
     }
 
     throw new Error(`File ${fileName} is empty`);
+}
+
+export function clearFrames() {
+    const files = fsSync.readdirSync(FRAME_PATH);
+    for (const file of files) {
+        fsSync.rmSync(path.join(FRAME_PATH, file), { recursive: true, force: true });
+    }
 }
