@@ -59,8 +59,8 @@ export async function convertFramesToVideo(videoName) {
                 "-movflags +faststart",
                 "-vf scale=trunc(iw/2)*2:trunc(ih/2)*2",
             ])
-            .on("start", (command) => {
-                console.log("Converting frames to MP4", command);
+            .on("start", () => {
+                console.log("Converting frames to MP4");
                 console.log("");
             })
             .on("progress", (progress) => {
